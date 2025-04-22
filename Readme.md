@@ -7,6 +7,17 @@ them to the clipboard 🤘.
 
 ![screenshot](images/screenshot.png)
 
+> ## Note About Available Emoji
+>
+> The workflow is built against the latest available macOS within the GitHub
+> continuous integration infrastructure. This means some emoji may be missing
+> until the GitHub infrastructure is updated. It also means that some emoji
+> may be present in the workflow that do not exist on your system if your
+> system is running an earlier version of macOS.
+>
+> If this is not desired, follow the instructions below for generating the
+> workflow on your own system.
+
 ## Installing the Workflow
 
 [Download the provided Alfred workflow][releases].
@@ -25,6 +36,9 @@ your clipboard.
 
 Press <kbd>alt</kbd>+<kbd>return</kbd> (⌥↵): **Copy the code** of the selected emoji)
 (e.g. `:rofl:`) to your clipboard.
+
+Press <kbd>ctrl</kbd>+<kbd>return</kbd> (⌃↵): **Copy the codepoint** **of** the selected emoji)
+(e.g. `U+1F923`) to your clipboard.
 
 Press <kbd>shift</kbd>+<kbd>return</kbd> (⇧↵): **Copy the default symbol** of the selected emoji)
 (e.g. 🤣) to your clipboard without skin tone modifier.
@@ -65,6 +79,8 @@ Trigger the workflow with either a custom hotkey or a custom snippet.
 1. Clone this repository
 2. `npm install`
 3. `npm run build`
+
+Note: Node.js >= 20 is required.
 
 ## Loading the Workflow into Alfred
 

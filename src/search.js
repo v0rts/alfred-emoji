@@ -1,8 +1,22 @@
 'use strict'
 
-const emojilib = require('emojilib')
-const emojiNames = emojilib.ordered
-const modifiers = emojilib.fitzpatrick_scale_modifiers
+const emojiData = require('./emoji.pack.json')
+const {
+  keywords: emojiKeywords,
+  emoji: emojiInfo,
+  searchTerms,
+  orderedEmoji,
+  emojiComponents
+} = emojiData
+
+// compatability layer:
+const modifiers = [
+  emojiComponents.light_skin_tone,
+  emojiComponents.medium_light_skin_tone,
+  emojiComponents.medium_skin_tone,
+  emojiComponents.medium_dark_skin_tone,
+  emojiComponents.dark_skin_tone
+]
 
 let skinTone
 let modifier
@@ -20,8 +34,8 @@ const setSkinToneModifier = (tone) => {
   modifier = skinTone ? modifiers[skinTone] : null
 }
 
-const addModifier = (emoji, modifier) => {
-  if (!modifier || !emoji.fitzpatrick_scale) return emoji.char
+const addModifier = (emoji, char, modifier) => {
+  if (!modifier || !emoji.skin_tone_support) return char
 
   /*
   * There are some emojis categorized as a sequence of emojis
@@ -31,20 +45,27 @@ const addModifier = (emoji, modifier) => {
   * https://emojipedia.org/emoji-zwj-sequence/
   */
 
-  const zwj = new RegExp('‍', 'g')
-  return emoji.char.match(zwj) ? emoji.char.replace(zwj, modifier + '‍') : emoji.char + modifier
+  const zwj = new RegExp('‍', 'g') // eslint-disable-line
+  return char.match(zwj) ? char.replace(zwj, modifier + '‍') : char + modifier
 }
 
-const getIconName = (emoji, name) => {
-  if (emoji.fitzpatrick_scale && skinTone && skinTone >= 0 && skinTone < 5) {
-    return `${name}_${skinTone}`
+const getIconName = (emoji) => {
+  if (emoji.skin_tone_support && skinTone && skinTone >= 0 && skinTone < 5) {
+    return `${emoji.slug}_${skinTone}`
   }
-  return name
+  return emoji.slug
 }
 
-const alfredItem = (emoji, name) => {
-  const modifiedEmoji = addModifier(emoji, modifier)
-  const icon = getIconName(emoji, name)
+const alfredItem = (emojiDetails, emojiSymbol) => {
+  if (emojiDetails === undefined) {
+    // Can happen when `char` references an emoji the system does not
+    // recognize. This happens with newer Unicode data sets being used on
+    // older macOS releases.
+    return
+  }
+  const modifiedEmoji = addModifier(emojiDetails, emojiSymbol, modifier)
+  const icon = getIconName(emojiDetails)
+  const name = emojiDetails.name
   return {
     uid: name,
     title: name,
@@ -53,42 +74,63 @@ const alfredItem = (emoji, name) => {
     autocomplete: name,
     icon: { path: `./icons/${icon}.png` },
     mods: {
+      // copy a code for the emoji, e.g. :thumbs_down:
       alt: {
-        subtitle: `${verb} ":${name}:" (${emoji.char}) ${preposition}`,
-        arg: `:${name}:`,
-        icon: { path: `./icons/${name}.png` }
+        subtitle: `${verb} ":${emojiDetails.slug}:" (${emojiSymbol}) ${preposition}`,
+        arg: `:${emojiDetails.slug}:`,
+        icon: { path: `./icons/${emojiDetails.slug}.png` }
       },
+      // copy the default symbol for the emoji, without skin tones
       shift: {
-        subtitle: `${verb} "${emoji.char}" (${name}) ${preposition}`,
-        arg: emoji.char,
-        icon: { path: `./icons/${name}.png` }
+        subtitle: `${verb} "${emojiSymbol}" (${name}) ${preposition}`,
+        arg: emojiSymbol,
+        icon: { path: `./icons/${emojiDetails.slug}.png` }
+      },
+      // copy the codepoint for the emoji
+      ctrl: {
+        subtitle: `${verb} "U+${emojiDetails.codepoint}" (${emojiSymbol}) ${preposition}`,
+        arg: `U+${emojiDetails.codepoint}`,
+        icon: { path: `./icons/${emojiDetails.slug}.png` }
       }
     }
   }
 }
 
-const alfredItems = (names) => {
+const alfredItems = (chars) => {
   const items = []
-  names.forEach((name) => {
-    const emoji = emojilib.lib[name]
-    if (!emoji) return
-    items.push(alfredItem(emoji, name))
-  })
+  for (const char of chars) {
+    const item = alfredItem(emojiInfo[char], char)
+    if (item == null) {
+      // If the host system being used to build the workflow has emoji
+      // available that emojilib hasn't incorporated yet, then we will hit
+      // this path. For example, as of 2025-02-14 Unicode 16.0 defines an
+      // emoji "face with bags under eyes" (0x01fae9) that is not present
+      // in the emojilib data. If we add `null` to the search results list,
+      // Alfred will not understand what to do with that result and will not
+      // display any search results for the set that includes the `null` value.
+      // Therefore, we have to omit it.
+      /*
+      const hex = [...char].map(c => c.codePointAt(0).toString(16)).join('')
+      console.log(`${char} (${hex}) is missing`)
+      */
+      continue
+    }
+    items.push(item)
+  }
   return { items }
 }
 
-const all = () => alfredItems(emojiNames)
+const all = () => alfredItems(orderedEmoji)
 
-const libHasEmoji = (name, term) => {
-  return emojilib.lib[name] &&
-    emojilib.lib[name].keywords.some((keyword) => keyword.includes(term))
-}
 const matches = (terms) => {
-  return emojiNames.filter((name) => {
-    return terms.every((term) => {
-      return name.includes(term) || libHasEmoji(name, term)
+  const result = []
+  for (const term of terms) {
+    const foundTerms = searchTerms.filter(searchTerm => searchTerm.includes(term))
+    foundTerms.forEach(foundTerm => {
+      Array.prototype.push.apply(result, emojiKeywords[foundTerm])
     })
-  })
+  }
+  return new Set(result)
 }
 
 // :thumbs up: => ['thumbs', 'up']
@@ -104,4 +146,8 @@ module.exports = function search (query, skinTone, pasteByDefault = false) {
   const terms = parse(query)
 
   return alfredItems(matches(terms))
+}
+
+module.exports.internals = {
+  alfredItem
 }
